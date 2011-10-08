@@ -1,66 +1,79 @@
-// touch - set modification date of a file
+// touch command modeled on heirloom project's touch
 package main
 
 import (
-	"os"
+	"syscall"
 	"flag"
 	"fmt"
-	"syscall"
+	"os"
+	"strings"
+	"strconv"
 	"time"
 )
 
-var create = flag.Bool("c", false, "Don't create if not exists")
-var newTime = flag.Int("t", int(time.Seconds()), "Set to time provided")
+var aflag = flag.Bool("a", false, "Change the access time")
+var mflag = flag.Bool("m", false, "Change the modification time")
+var cflag = flag.Bool("c", false, "Don't create the file if not exists")
+var tflag = flag.String("t", "", "Use time instead of current time. Time specified as [[CC]YY]MMDDhhmm[.SS]")
+var rflag = flag.String("r", "", "ref_file Use time of corresponding file rather than current time")
+
+var now = time.Seconds()
 
 func usage() {
-	fmt.Fprintf(
-		os.Stderr,
-		"usage: touch [-c] [-t time] names...\n")
-	os.Exit(1)
+	fmt.Fprintf(os.Stderr, "Usage: touch [-amc] [-r ref_file] [-t time] file ...")
+	os.Exit(2)
+}
+
+func badtime() {
+	fmt.Fprintf(os.Stderr, "touch: bad time specification\n")
+	os.Exit(2)
+}
+
+func atot(s string, m int) int {
+	i, e := strconv.Atoi(s)
+
+	if i > m || i < 0 || s[0] == '+' || s[0] == '-' {
+		badtime()
+	}
+
+	return i
+}
+
+func ptime(cp string) syscall.Time_t {
+	t := now
+	stm := time.LocalTime()
+
+	if sz := len(cp); sz == 11 || sz == 13 || sz == 15 {
+		if strings.Index(cp, ".") != sz-3 {
+			badtime()
+		}
+
+		stm.Second = atot(cp[sz-2:], 61)
+		sz -= 3
+	} else {
+		stm.Second = 0
+	}
+
+	if sz == 12 {
+		year := cp[:4]
+		if stm.Year = atot(year, 30000); stm.Year < 1979 {
+			badtime()
+		}
+	}
+
 }
 
 func main() {
-	flag.Parse();
+	flag.Parse()
 
-	if flag.NArg() < 1 {
+	if flag.NArg() == 0 {
 		usage()
 	}
 
-	for i := 0; i < flag.NArg(); i++ {
-		var name = flag.Arg(i)
-		var tb syscall.Utimbuf
-		tb.Actime = (int32)(*newTime)
-		tb.Modtime = (int32)(*newTime)
-		var e = syscall.Utime(name, &tb)
-
-		if (e != 0) && *create {
-			fmt.Fprintf(
-				os.Stderr,
-				"touch: cannot touch `%s'\n",
-				name)
-			os.Exit(1)
-		}
-
-		f, err := os.Open(name, os.O_CREAT, 0666)
-		if err != nil {
-			fmt.Fprintf(
-				os.Stderr,
-				"touch: cannot touch `%s': %s\n",
-				name,
-				err.String())
-			os.Exit(1)
-		}
-		f.Close()
-
-		e = syscall.Utime(name, &tb)
-		if e != 0{
-			fmt.Fprintf(
-			os.Stderr,
-			"touch: cannot touch `%s'\n",
-			name)
-			os.Exit(1)
+	t := flag.Lookup("t")
+	if t != nil {
+		if t.Value == nil {
+			usage()
 		}
 	}
-
-	os.Exit(0)
 }
