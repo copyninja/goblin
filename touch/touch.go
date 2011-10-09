@@ -11,16 +11,19 @@ import (
 	"time"
 )
 
-var aflag = flag.Bool("a", false, "Change the access time")
-var mflag = flag.Bool("m", false, "Change the modification time")
-var cflag = flag.Bool("c", false, "Don't create the file if not exists")
-var tflag = flag.String("t", "[[CC]YY]MMDDhhmm[.SS]", "Use time instead of current time. Time specified as [[CC]YY]MMDDhhmm[.SS]")
-var rflag = flag.String("r", "ref_file", "Use time of corresponding file rather than current time")
+var (
+	aflag = flag.Bool("a", false, "Change the access time")
+	mflag = flag.Bool("m", false, "Change the modification time")
+	cflag = flag.Bool("c", false, "Don't create the file if not exists")
+	tflag = flag.String("t", "[[CC]YY]MMDDhhmm[.SS]", "Use time instead of current time. Time specified as [[CC]YY]MMDDhhmm[.SS]")
+	rflag = flag.String("r", "ref_file", "Use time of corresponding file rather than current time")
+)
 
-var now = time.Seconds()
-var errcnt = 0
-
-var nulltime = false
+var (
+	now      = time.Seconds()
+	errcnt   = 0
+	nulltime = false
+)
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: touch [-amc] [-r ref_file] [-t time] file ...")
@@ -107,7 +110,7 @@ func reffile(filename string) (syscall.Time_t, syscall.Time_t) {
 		os.Exit(1)
 	}
 
-	// bug in Go! Amd64 has following rest have Atimespec and Mtimespec
+	//FIXME: bug in Go! Amd64 has following rest have Atimespec and Mtimespec
 	return syscall.Time_t(st.Atim.Sec), syscall.Time_t(st.Mtim.Sec)
 }
 
@@ -157,13 +160,13 @@ func touch(filename string, nacc, nmod syscall.Time_t) {
 	}
 
 	if nulltime {
-		if e := syscall.Utime(filename,nil); e != 0 {
-			fmt.Fprintf(os.Stderr,"touch: unable to touch %s",filename)
+		if e := syscall.Utime(filename, nil); e != 0 {
+			fmt.Fprintf(os.Stderr, "touch: unable to touch %s", filename)
 			errcnt += 1
 		}
-	}else {
-		if e := syscall.Utime(filename,&ut); e != 0 {
-			fmt.Fprintf(os.Stderr,"touch: unable to touch %s",filename)
+	} else {
+		if e := syscall.Utime(filename, &ut); e != 0 {
+			fmt.Fprintf(os.Stderr, "touch: unable to touch %s", filename)
 			errcnt += 1
 		}
 	}
@@ -208,7 +211,7 @@ func main() {
 		}
 
 		nacc, nmod = reffile(pf.Value.String())
-		fmt.Printf("nacc = %d\n nmod = %d\n",nacc,nmod)
+		fmt.Printf("nacc = %d\n nmod = %d\n", nacc, nmod)
 	}
 
 	if nacc == syscall.Time_t(-1) && nmod == syscall.Time_t(-1) && !*aflag && !*mflag {
