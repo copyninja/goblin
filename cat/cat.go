@@ -11,15 +11,21 @@ import (
 	"fmt"
 )
 
+var (
+	sflag = flag.Bool("s",false,"Be silent about errors. File open/read etc")
+)
+
+var silentOnErr = false
+
 func cat(f *os.File) {
 	const NBUF = 8192
 	var buf [NBUF]byte
 
 	for {
-		switch nr, rerr := f.Read(buf[:]); true {
+		switch nr, rerr := f.Read(buf[:]);{
 		case nr > 0:
 			var nw, werr = os.Stdout.Write(buf[0:nr])
-			if nw != nr {
+			if nw != nr && ! silentOnErr{
 				fmt.Fprintf(
 					os.Stderr,
 					"cat: write error copying %s: %s",
@@ -42,10 +48,15 @@ func cat(f *os.File) {
 
 func main() {
 	flag.Parse()
+
+	if *sflag {
+		silentOnErr = true
+	}
+	
 	if flag.NArg() > 0 {
 		for i := 0; i < flag.NArg(); i++ {
-			var f, err = os.Open(flag.Arg(i), os.O_RDONLY, 0666)
-			if f == nil {
+			var f, err = os.Open(flag.Arg(i))
+			if f == nil && ! silentOnErr {
 				fmt.Fprintf(
 					os.Stderr,
 					"cat: can't open %s: %s",
