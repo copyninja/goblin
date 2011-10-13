@@ -11,19 +11,19 @@ import (
 	"time"
 )
 
+var touchFlagset = flag.NewFlagSet("touch",flag.ExitOnError)
+
 var (
-	aflag = flag.Bool("a", false, "Change the access time")
-	mflag = flag.Bool("m", false, "Change the modification time")
-	cflag = flag.Bool("c", false, "Don't create the file if not exists")
-	tflag = flag.String("t", "time", "Use time instead of current time. Time specified as [[CC]YY]MMDDhhmm[.SS]")
-	rflag = flag.String("r", "ref_file", "Use time of corresponding file rather than current time")
+	aflag = touchFlagset.Bool("a", false, "Change the access time")
+	mflag = touchFlagset.Bool("m", false, "Change the modification time")
+	cflag = touchFlagset.Bool("c", false, "Don't create the file if not exists")
+	tflag = touchFlagset.String("t", "time", "Use time instead of current time. Time specified as [[CC]YY]MMDDhhmm[.SS]")
+	rflag = touchFlagset.String("r", "ref_file", "Use time of corresponding file rather than current time")
 )
 
 var (
-	now      = time.Seconds() // Current time
-	errcnt   = 0              // count errors
-	nulltime = false          // no time given in the arguments
-	datetime = true           // Use date_time operand not -t
+	nulltime = false // no time given in the arguments
+	datetime = true  // Use date_time operand not -t
 )
 
 func usage() {
@@ -46,101 +46,107 @@ func atot(s string, m int) int {
 	return i
 }
 
-func otime(cp string) syscall.Time_t {
-	t := now
+func otime(cp string) int64 {
 	stm := time.LocalTime()
 	datetime = true
 
 	stm.Second = 0
 
-	switch len(cp) {
-	case 10:
-		if stm.Year = int64(atot(cp[8:],99)); stm.Year < 69 {
-			stm.Year += 100
+	sz := len(cp)
+	switch {
+	case sz == 10:
+		if stm.Year = int64(atot(cp[8:], 99)); stm.Year < 69 {
+			stm.Year += 2000
+		} else {
+			stm.Year += 1900
 		}
+
 		cp = cp[:8]
-	case 8:
-		stm.Minute = atot(cp[6:],59)
+		sz -= 2; fallthrough
+	case sz == 8:
+		stm.Minute = atot(cp[6:], 59)
 		cp = cp[:6]
-		stm.Hour = atot(cp[4:],23)
+		fmt.Println(stm.Minute)
+
+		stm.Hour = atot(cp[4:], 23)
 		cp = cp[:4]
-		if stm.Day = atot(cp[2:],31); stm.Day == 0 {
+		fmt.Println(stm.Hour)
+
+		if stm.Day = atot(cp[2:], 31); stm.Day == 0 {
 			badtime()
 		}
+		fmt.Println(stm.Day)
+
 		cp = cp[:2]
 
-		if stm.Month = atot(cp,12); stm.Month == 0 {
+		if stm.Month = atot(cp, 12); stm.Month == 0 {
 			badtime()
 		}
 		stm.Month -= 1
-
+		fmt.Println(stm.Month)
 	default:
 		badtime()
 	}
 
-	t = stm.Seconds()
-	return syscall.Time_t(t)
-
+	return stm.Seconds()
 }
 
-func ptime(cp string) syscall.Time_t {
-	t := now
+func ptime(cp string) int64 {
 	stm := time.LocalTime()
 	sz := len(cp)
 
-
-	if sz == 11 || sz == 13 || sz == 15 {
-		if strings.Index(cp, ".") != sz-3 {
+	switch {
+	case sz == 11 || sz == 13 || sz == 15:
+		if strings.LastIndex(cp, ".") != sz-3 {
 			badtime()
 		}
 
 		stm.Second = atot(cp[sz-2:], 61)
 		cp = cp[:sz-3]
-		sz -= 3
-	} else {
-		stm.Second = 0
-	}
-
-	if sz == 12 {
+		sz -= 3; fallthrough
+	case sz == 12:
 		year := cp[:4]
 		if stm.Year = int64(atot(year, 30000)); stm.Year < 1970 {
 			badtime()
 		}
-		stm.Year -= 1900
+
 		cp = cp[4:]
-		sz -= 4
-	} else if sz == 10 {
-		year := cp[:2]
-		if stm.Year = int64(atot(year, 99)); stm.Year < 69 {
-			stm.Year += 100
+		sz -= 4; fallthrough
+	case sz == 10:
+		var year string
+		if tmp := atot(cp[:2], 99); tmp > 69 && tmp <= 99 {
+			year = "19" + cp[:2]
+		} else {
+			year = string(2000 + int(cp[0])*10 + int(cp[1]))
 		}
 
+		stm.Year = int64(atot(year, 30000))
+
 		cp = cp[2:]
-		sz -= 2
-	}
-
-	if sz != 8 {
+		sz -= 2; fallthrough
+	case sz != 8:
 		badtime()
+	default:
+		stm.Minute = atot(cp[6:], 59)
+		cp = cp[:6]
+
+		stm.Hour = atot(cp[4:], 23)
+		cp = cp[:4]
+
+		if stm.Day = atot(cp[2:], 31); stm.Day == 0 {
+			badtime()
+		}
+		cp = cp[:2]
+
+		if stm.Month = atot(cp, 12); stm.Month == 0 {
+			badtime()
+		}
 	}
 
-	stm.Minute = atot(cp[6:], 59)
-	cp = cp[:6]
-	stm.Hour = atot(cp[4:], 23)
-	cp = cp[:4]
-	if stm.Day = atot(cp[2:], 31); stm.Day == 0 {
-		badtime()
-	}
-	cp = cp[:2]
-	if stm.Month = atot(cp, 12); stm.Month == 0 {
-		badtime()
-	}
-
-	t = stm.Seconds()
-
-	return syscall.Time_t(t)
+	return stm.Seconds()
 }
 
-func reffile(filename string) (syscall.Time_t, syscall.Time_t) {
+func reffile(filename string) (int64, int64) {
 	var st syscall.Stat_t
 
 	if e := syscall.Stat(filename, &st); e != 0 {
@@ -149,10 +155,10 @@ func reffile(filename string) (syscall.Time_t, syscall.Time_t) {
 	}
 
 	//FIXME: bug in Go! Amd64 has following rest have Atimespec and Mtimespec
-	return syscall.Time_t(st.Atim.Sec), syscall.Time_t(st.Mtim.Sec)
+	return st.Atim.Sec, st.Mtim.Sec
 }
 
-func touch(filename string, nacc, nmod syscall.Time_t) {
+func touch(filename string, nacc, nmod int64) (errcnt int) {
 	var st syscall.Stat_t
 	var ut syscall.Utimbuf
 
@@ -160,6 +166,7 @@ func touch(filename string, nacc, nmod syscall.Time_t) {
 		if e == syscall.ENOENT {
 
 			if *cflag {
+				errcnt++
 				return
 			}
 
@@ -185,13 +192,13 @@ func touch(filename string, nacc, nmod syscall.Time_t) {
 	}
 
 	if *aflag {
-		ut.Actime = int64(nacc)
+		ut.Actime = nacc
 	} else {
 		ut.Actime = st.Atim.Sec
 	}
 
 	if *mflag {
-		ut.Modtime = int64(nmod)
+		ut.Modtime = nmod
 	} else {
 		ut.Modtime = st.Mtim.Sec
 	}
@@ -208,12 +215,24 @@ func touch(filename string, nacc, nmod syscall.Time_t) {
 		}
 	}
 
+	return
+}
+
+func isdigit(ch uint8) bool {
+	if ch >= 0 || ch <= 9 {
+		return true
+	}
+
+	return false
 }
 
 func main() {
-	flag.Parse()
+	touchFlagset.Usage = usage
+	touchFlagset.Parse(os.Args)
 
-	nacc, nmod := syscall.Time_t(-1), syscall.Time_t(-1)
+	now := time.Seconds() // Current time
+
+	var nacc, nmod int64 = -1, -1
 	optind := 0
 
 	if flag.NArg() == 0 {
@@ -226,7 +245,7 @@ func main() {
 	}
 
 	if *rflag != "ref_file" {
-		if nacc != syscall.Time_t(-1) && nmod != syscall.Time_t(-1) {
+		if nacc != -1 && nmod != -1 {
 			usage()
 		}
 
@@ -234,35 +253,36 @@ func main() {
 	}
 
 	firstArg := flag.Arg(0)
-	if firstArg[0] >= 0 || firstArg[0] <= 9 && nacc == syscall.Time_t(-1) && nmod == syscall.Time_t(-1) {
+	if isdigit(firstArg[0]) && nacc == -1 && nmod == -1 {
 		// Looks like old style argument for time stamp
 		accmodtime := otime(firstArg[:])
-		nacc, nmod = accmodtime,accmodtime
-		optind ++
+		nacc, nmod = accmodtime, accmodtime
+		optind++
 	}
 
-	if nacc == syscall.Time_t(-1) && nmod == syscall.Time_t(-1) && !*aflag && !*mflag {
+	if nacc == -1 && nmod == -1 && !*aflag && !*mflag {
 		nulltime = true
 	}
 
-	if nacc == syscall.Time_t(-1) {
-		nacc = syscall.Time_t(now)
+	if nacc == -1 {
+		nacc = now
 	}
 
-	if nmod == syscall.Time_t(-1) {
-		nmod = syscall.Time_t(now)
+	if nmod == -1 {
+		nmod = now
 	}
 
 	if !*aflag && !*mflag {
 		*aflag, *mflag = true, true
 	}
 
-	if optind >= flag.NArg() && ! datetime {
+	if optind >= flag.NArg() && !datetime {
 		usage()
 	}
-	
+
+	errcnt := 0
 	for i := optind; i < flag.NArg(); i++ {
-		touch(flag.Arg(i), nacc, nmod)
+		errcnt += touch(flag.Arg(i), nacc, nmod)
 	}
 
 	if errcnt < 0100 {
